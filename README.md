@@ -1,4 +1,5 @@
 # Shared ToDo
+![CI](https://github.com/kadjrkoroglu/Shared-ToDo/actions/workflows/ci.yml/badge.svg)
 
 A collaborative todo list app backed by a Node.js + PostgreSQL REST API ([shared-todo-api](https://github.com/kadjrkoroglu/shared-todo-api)).
 
