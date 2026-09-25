@@ -1,1 +1,5 @@
 #include "Generated.xcconfig"
+
+// Xcode 27's `lipo` rejects `-verify_arch` with multiple architectures, which
+// breaks Flutter's `debug_unpack_ios` step on simulator builds.
+EXCLUDED_ARCHS[sdk=iphonesimulator*] = x86_64
