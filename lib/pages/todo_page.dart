@@ -1,22 +1,65 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:shared_todo/services/firestore_service.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_todo/components/todo_tile.dart';
+import 'package:shared_todo/domain/entities/todo_list.dart';
+import 'package:shared_todo/domain/repositories/todo_repository.dart';
+import 'package:shared_todo/domain/usecases/add_todo_usecase.dart';
+import 'package:shared_todo/domain/usecases/delete_todo_usecase.dart';
+import 'package:shared_todo/domain/usecases/get_todos_usecase.dart';
+import 'package:shared_todo/domain/usecases/set_todo_completed_usecase.dart';
+import 'package:shared_todo/presentation/viewmodels/todo_list_viewmodel.dart';
 
-class TodoPage extends StatefulWidget {
-  final String listId;
-  final String listName;
+class TodoPage extends StatelessWidget {
+  final TodoList list;
 
-  const TodoPage({super.key, required this.listId, required this.listName});
+  const TodoPage({super.key, required this.list});
 
   @override
-  State<TodoPage> createState() => _TodoPageState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (context) {
+        final repository = context.read<TodoRepository>();
+        return TodoListViewModel(
+          listId: list.id,
+          getTodos: GetTodosUseCase(repository),
+          addTodo: AddTodoUseCase(repository),
+          setTodoCompleted: SetTodoCompletedUseCase(repository),
+          deleteTodo: DeleteTodoUseCase(repository),
+        )..load();
+      },
+      child: _TodoView(list: list),
+    );
+  }
 }
 
-class _TodoPageState extends State<TodoPage> {
-  final TextEditingController _todoController = TextEditingController();
-  final FirestoreService _firestoreService = FirestoreService();
+class _TodoView extends StatefulWidget {
+  final TodoList list;
 
-  void _showAddTodoBottomSheet(BuildContext context) {
+  const _TodoView({required this.list});
+
+  @override
+  State<_TodoView> createState() => _TodoViewState();
+}
+
+class _TodoViewState extends State<_TodoView> {
+  final TextEditingController _todoController = TextEditingController();
+
+  @override
+  void dispose() {
+    _todoController.dispose();
+    super.dispose();
+  }
+
+  void _showError(TodoListViewModel viewModel) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(viewModel.errorMessage ?? 'An error occurred'),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
+  }
+
+  void _showAddTodoBottomSheet() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -77,29 +120,38 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  void _addTodo() async {
-    if (_todoController.text.trim().isNotEmpty) {
-      await _firestoreService.addTodo(
-        widget.listId,
-        _todoController.text.trim(),
-      );
+  Future<void> _addTodo() async {
+    final title = _todoController.text.trim();
+    if (title.isEmpty) return;
+
+    final viewModel = context.read<TodoListViewModel>();
+    final navigator = Navigator.of(context);
+
+    final success = await viewModel.addTodo(title);
+    if (!mounted) return;
+
+    if (success) {
       _todoController.clear();
-      if (mounted) Navigator.pop(context); // Close bottom sheet
+      navigator.pop(); // Close bottom sheet
+    } else {
+      _showError(viewModel);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final viewModel = context.watch<TodoListViewModel>();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC), // Match HomeScreen background
       appBar: AppBar(
-        title: Text(widget.listName),
+        title: Text(widget.list.name),
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 8),
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF6366F1).withOpacity(0.1),
+              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(
@@ -110,73 +162,17 @@ class _TodoPageState extends State<TodoPage> {
           ),
         ],
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: _firestoreService.getTodos(widget.listId),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          // --- MEMBER LIST HEADER ---
-          return Column(
-            children: [
-              FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance
-                    .collection('shared_lists')
-                    .doc(widget.listId)
-                    .get(),
-                builder: (context, listDoc) {
-                  if (!listDoc.hasData) return const SizedBox();
-                  List members =
-                      (listDoc.data!.data()
-                          as Map<String, dynamic>)['members'] ??
-                      [];
-
-                  return FutureBuilder<List<String>>(
-                    future: _firestoreService.getMemberEmails(members),
-                    builder: (context, emailSnapshot) {
-                      if (!emailSnapshot.hasData) return const SizedBox();
-                      return Container(
-                        height: 40,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: emailSnapshot.data!.length,
-                          itemBuilder: (context, i) => Container(
-                            margin: const EdgeInsets.only(right: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Center(
-                              child: Text(
-                                emailSnapshot.data![i],
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.blueAccent,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-              const Divider(height: 1),
-              Expanded(child: _buildTodoList(snapshot)),
-            ],
-          );
-        },
-      ),
+      body: viewModel.isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                _buildMemberHeader(),
+                const Divider(height: 1),
+                Expanded(child: _buildTodoList(viewModel)),
+              ],
+            ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddTodoBottomSheet(context),
+        onPressed: _showAddTodoBottomSheet,
         backgroundColor: Colors.blueAccent,
         label: const Text('New Task', style: TextStyle(color: Colors.white)),
         icon: const Icon(Icons.add, color: Colors.white),
@@ -184,127 +180,88 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
-  Widget _buildTodoList(AsyncSnapshot<QuerySnapshot> snapshot) {
-    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.assignment_turned_in_outlined,
-              size: 64,
-              color: Colors.grey.shade300,
-            ),
-            const SizedBox(height: 15),
-            const Text('No tasks found.', style: TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
-    }
+  Widget _buildMemberHeader() {
+    final members = widget.list.members;
 
-    // Sort tasks: Active first, Completed last
-    var todos = snapshot.data!.docs;
-    todos.sort((a, b) {
-      bool aDone = (a.data() as Map<String, dynamic>)['isDone'] ?? false;
-      bool bDone = (b.data() as Map<String, dynamic>)['isDone'] ?? false;
-      if (aDone && !bDone) return 1;
-      if (!aDone && bDone) return -1;
-      return 0;
-    });
-
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      itemCount: todos.length,
-      itemBuilder: (context, index) {
-        var todoDoc = todos[index];
-        var todoData = todoDoc.data() as Map<String, dynamic>;
-        bool isDone = todoData['isDone'] ?? false;
-
-        return Dismissible(
-          key: Key(todoDoc.id),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20),
-            margin: const EdgeInsets.symmetric(vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.redAccent.shade100,
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: const Icon(Icons.delete, color: Colors.white),
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: members.length,
+        itemBuilder: (context, i) => Container(
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(20),
           ),
-          onDismissed: (_) {
-            _firestoreService.deleteTodo(widget.listId, todoDoc.id);
-          },
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(15),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
-                  blurRadius: 5,
-                  offset: const Offset(0, 2),
+          child: Center(
+            child: Text(
+              members[i].email,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.blueAccent,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTodoList(TodoListViewModel viewModel) {
+    final todos = viewModel.sortedTodos;
+
+    return RefreshIndicator(
+      onRefresh: viewModel.load,
+      child: todos.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: 300,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.assignment_turned_in_outlined,
+                        size: 64,
+                        color: Colors.grey.shade300,
+                      ),
+                      const SizedBox(height: 15),
+                      Text(
+                        viewModel.errorMessage ?? 'No tasks found.',
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
                 ),
               ],
+            )
+          : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              itemCount: todos.length,
+              itemBuilder: (context, index) {
+                final todo = todos[index];
+                return TodoTile(
+                  todo: todo,
+                  verticalMargin: 5,
+                  onToggle: () async {
+                    final ok = await viewModel.toggle(todo);
+                    if (!ok && mounted) _showError(viewModel);
+                  },
+                  onDelete: () async {
+                    await viewModel.deleteTodo(todo);
+                    if (viewModel.errorMessage != null && mounted) {
+                      _showError(viewModel);
+                    }
+                  },
+                );
+              },
             ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 8,
-              ),
-              leading: GestureDetector(
-                onTap: () {
-                  _firestoreService.toggleTodoStatus(
-                    widget.listId,
-                    todoDoc.id,
-                    isDone,
-                  );
-                },
-                child: Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isDone ? const Color(0xFF10B981) : Colors.white,
-                    border: Border.all(
-                      color: isDone
-                          ? const Color(0xFF10B981)
-                          : Colors.grey.shade300,
-                      width: 2,
-                    ),
-                  ),
-                  child: Icon(
-                    Icons.check,
-                    size: 16,
-                    color: isDone ? Colors.white : Colors.transparent,
-                  ),
-                ),
-              ),
-              title: Text(
-                todoData['title'] ?? '',
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isDone
-                      ? const Color(0xFF94A3B8)
-                      : const Color(0xFF1E293B),
-                  fontWeight: isDone ? FontWeight.normal : FontWeight.w500,
-                  decoration: isDone ? TextDecoration.lineThrough : null,
-                ),
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline_rounded),
-                color: const Color(0xFFEF4444),
-                iconSize: 22,
-                onPressed: () {
-                  _firestoreService.deleteTodo(widget.listId, todoDoc.id);
-                },
-              ),
-            ),
-          ),
-        );
-      },
     );
   }
 }

@@ -1,37 +1,42 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_todo/data/repositories/auth_repository_impl.dart';
+import 'package:shared_todo/data/repositories/todo_repository_impl.dart';
 import 'package:shared_todo/data/services/api_client.dart';
 import 'package:shared_todo/data/services/token_storage.dart';
+import 'package:shared_todo/domain/repositories/todo_repository.dart';
 import 'package:shared_todo/domain/usecases/login_usecase.dart';
 import 'package:shared_todo/domain/usecases/logout_usecase.dart';
 import 'package:shared_todo/domain/usecases/register_usecase.dart';
 import 'package:shared_todo/domain/usecases/restore_session_usecase.dart';
 import 'package:shared_todo/presentation/viewmodels/auth_viewmodel.dart';
 import 'package:shared_todo/theme/app_theme.dart';
-import 'firebase_options.dart';
 import 'auth_wrapper.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // TODO: remove once lists and todos are migrated to the REST API.
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   final tokenStorage = TokenStorage();
+  final apiClient = ApiClient(tokenStorage: tokenStorage);
   final authRepository = AuthRepositoryImpl(
-    apiClient: ApiClient(tokenStorage: tokenStorage),
+    apiClient: apiClient,
     tokenStorage: tokenStorage,
   );
 
+  final authViewModel = AuthViewModel(
+    login: LoginUseCase(authRepository),
+    register: RegisterUseCase(authRepository),
+    restoreSession: RestoreSessionUseCase(authRepository),
+    logout: LogoutUseCase(authRepository),
+  );
+  apiClient.onUnauthorized = authViewModel.logout;
+
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => AuthViewModel(
-        login: LoginUseCase(authRepository),
-        register: RegisterUseCase(authRepository),
-        restoreSession: RestoreSessionUseCase(authRepository),
-        logout: LogoutUseCase(authRepository),
-      )..init(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: authViewModel..init()),
+        Provider<TodoRepository>.value(value: TodoRepositoryImpl(apiClient)),
+      ],
       child: const MyApp(),
     ),
   );

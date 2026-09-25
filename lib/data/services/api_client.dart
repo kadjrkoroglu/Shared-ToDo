@@ -15,6 +15,9 @@ class ApiClient {
   final TokenStorage _tokenStorage;
   final http.Client _client;
 
+  /// Called when the server rejects a token we sent (expired or invalid).
+  void Function()? onUnauthorized;
+
   Future<dynamic> get(String path) => _send('GET', path);
 
   Future<dynamic> post(String path, {Map<String, dynamic>? body}) =>
@@ -54,10 +57,10 @@ class ApiClient {
       throw const NetworkException();
     }
 
-    return _handle(response);
+    return _handle(response, hadToken: token != null);
   }
 
-  dynamic _handle(http.Response response) {
+  dynamic _handle(http.Response response, {required bool hadToken}) {
     final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -69,6 +72,7 @@ class ApiClient {
         : 'Something went wrong';
 
     if (response.statusCode == 401) {
+      if (hadToken) onUnauthorized?.call();
       throw UnauthorizedException(message);
     }
     throw ApiException(message, statusCode: response.statusCode);

@@ -21,7 +21,6 @@ class AppTheme {
         primary: primaryColor,
         secondary: accentColor,
         surface: cardColor,
-        background: backgroundColor,
         error: errorColor,
       ),
       scaffoldBackgroundColor: backgroundColor,
