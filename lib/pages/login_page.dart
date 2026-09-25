@@ -1,9 +1,8 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_todo/components/my_button.dart';
 import 'package:shared_todo/components/my_textfield.dart';
-import 'package:shared_todo/components/square_tile.dart';
-import 'package:shared_todo/services/auth_service.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_todo/presentation/viewmodels/auth_viewmodel.dart';
 
 class LoginPage extends StatefulWidget {
   final Function()? onTap;
@@ -21,27 +20,15 @@ class _LoginPageState extends State<LoginPage> {
 
   // sign user in method
   void signUserIn() async {
-    final navigator = Navigator.of(context); // Save Navigator instance
+    final viewModel = context.read<AuthViewModel>();
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
+    final success = await viewModel.login(
+      emailController.text.trim(),
+      passwordController.text,
     );
 
-    try {
-      await AuthService().signInWithEmail(
-        emailController.text.trim(),
-        passwordController.text,
-      );
-
-      navigator.pop(); // Close dialog
-    } on FirebaseAuthException catch (e) {
-      navigator.pop();
-      showErrorMessage(e.code);
-    } catch (e) {
-      navigator.pop();
-      showErrorMessage("An error occurred");
+    if (!success && mounted) {
+      showErrorMessage(viewModel.errorMessage ?? 'An error occurred');
     }
   }
 
@@ -114,47 +101,6 @@ class _LoginPageState extends State<LoginPage> {
                 SizedBox(height: 25),
 
                 MyButton(onTap: signUserIn, text: "Sign In"),
-
-                SizedBox(height: 50),
-
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 25),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Divider(thickness: 0.5, color: Colors.grey[400]),
-                      ),
-
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: Text(
-                          "Or continue with",
-                          style: TextStyle(color: Colors.grey[700]),
-                        ),
-                      ),
-
-                      Expanded(
-                        child: Divider(thickness: 0.5, color: Colors.grey[400]),
-                      ),
-                    ],
-                  ),
-                ),
-
-                SizedBox(height: 50),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SquareTile(
-                      imagePath: 'lib/images/google.png',
-                      onTap: () => AuthService().signInWithGoogle(),
-                    ),
-
-                    SizedBox(width: 25),
-
-                    SquareTile(imagePath: 'lib/images/apple.png', onTap: () {}),
-                  ],
-                ),
 
                 SizedBox(height: 50),
 

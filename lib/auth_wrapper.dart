@@ -1,6 +1,6 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_todo/services/auth_service.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_todo/presentation/viewmodels/auth_viewmodel.dart';
 import 'pages/home_screen.dart';
 import 'pages/login_or_register_page.dart';
 
@@ -9,25 +9,15 @@ class AuthWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authService = AuthService();
+    final status = context.watch<AuthViewModel>().status;
 
-    return StreamBuilder<User?>(
-      stream: authService.user,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        if (snapshot.hasData) {
-          // If logged in, show home screen
-          return const HomeScreen();
-        }
-
-        // If not logged in, show login or register page
+    switch (status) {
+      case AuthStatus.unknown:
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      case AuthStatus.authenticated:
+        return const HomeScreen();
+      case AuthStatus.unauthenticated:
         return const LoginOrRegisterPage();
-      },
-    );
+    }
   }
 }

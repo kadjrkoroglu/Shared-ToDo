@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
-import '../services/auth_service.dart';
+import 'package:provider/provider.dart';
+import '../presentation/viewmodels/auth_viewmodel.dart';
 import '../services/firestore_service.dart';
 import 'todo_page.dart';
 
@@ -12,7 +13,6 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    final authService = AuthService();
     final firestoreService = FirestoreService();
     final TextEditingController _personalTodoController =
         TextEditingController();
@@ -283,7 +283,7 @@ class HomeScreen extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        onTap: () => authService.signOut(),
+                        onTap: () => context.read<AuthViewModel>().logout(),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
